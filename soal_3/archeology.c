@@ -14,7 +14,7 @@
 
 /*  
     Soal_3 archeology.c
-    VERSION 3 - no longer makes unused combination files
+    VERSION 4 - proper combined listing and reading
     Amoes Noland 5027231028
 */
 
@@ -23,63 +23,96 @@
 static const char *dirpath =
 "/home/winter/Documents/ITS/SISOP/Modul4/soal_3/relics";
 
+// Get file attributes
 static int arc_getattr(const char *path, struct stat *stbuf)
 {
-    // Get file attributes
-    char fpath[MAX_BUFFER];
-    if(strcmp(path,"/") == 0){
-        path = dirpath;
-        sprintf(fpath,"%s",path);
-    } else {
-        sprintf(fpath, "%s%s",dirpath,path);
+    memset(stbuf, 0, sizeof(struct stat));
+    if (strcmp(path, "/") == 0) {
+        // Set link to . and itself if dir with dir perms
+        stbuf->st_mode = S_IFDIR | 0755;
+        stbuf->st_nlink = 2;
+        return 0;
+
+        // DEBUGGING
+        // printf("attr dir\n");
     }
 
-    int res = lstat(fpath, stbuf);
-    if (res == -1) return -errno;
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
 
+    // DEBUGGING
+    // printf("atr: %s\n", fpath);
+
+    // Set link to only itself with read only perms
+    stbuf->st_mode = S_IFREG | 0444;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = 0;
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd; int i = 0;
+
+    // Gets total size of all parts in a loop
+    while(1){
+        //DEBUGGING
+        // printf("%s.%03d\n", fpath, i);
+
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, i++);
+        fd = fopen(ppath, "rb");
+        if (!fd) break;
+
+        // Adds filesize to stat buffer
+        fseek(fd, 0L, SEEK_END);
+        stbuf->st_size += ftell(fd);
+        fclose(fd);
+    }
+
+    if (i==1) return -errno;
     return 0;
 }
 
+// Read directory
 static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi)
 {
-    // Read directory
-    char fpath[MAX_BUFFER];
-    if(strcmp(path,"/") == 0){
-        path = dirpath;
-        sprintf(fpath,"%s",path);
-    } else {
-        sprintf(fpath, "%s%s",dirpath,path);
-    }
-
-    DIR *dp;
-    struct dirent *de;
     (void) offset;
     (void) fi;
-    
+
+    // Fills directory listing
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+
+    // Handle path
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Handles directory opening
+    DIR *dp;
+    struct dirent *de;
     dp = opendir(fpath);
     if (!dp) return -errno;
 
-    int filecount = 0;
+    // DEBUGGING
+    // int filecount = 1;
     printf("dir: %s\n", fpath);
 
+    // Main loop for directory checking
     while ((de = readdir(dp)) != NULL) {
         struct stat st;
         memset(&st, 0, sizeof(st));
         st.st_ino = de->d_ino;
         st.st_mode = de->d_type << 12;
 
-        if (de->d_name[0] == '.') continue;
+        if (strstr(de->d_name, ".000") == NULL) continue;
 
         char cut[MAX_BUFFER];
         strcpy(cut, de->d_name);
         cut[strlen(cut)-4] = '\0';
 
-        printf("ls%d %s\n", filecount++, cut);
-
-        // char cmd[MAX_BUFFER];
-        // sprintf(cmd, "cat %s* >> %s", cut, cut); 
-        // system(cmd);
+        // DEBUGGING
+        // printf("ls%02d %s\n", filecount++, cut);
 
         if (filler(buf, cut, &st, 0)) break;
     }
@@ -87,28 +120,54 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     closedir(dp); return 0;
 }
 
+// Read data from file
 static int arc_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    // Read data from file
-    char fpath[MAX_BUFFER];
-    if(strcmp(path,"/") == 0){
-        path = dirpath;
-        sprintf(fpath,"%s",path);
-    } else {
-        sprintf(fpath, "%s%s",dirpath,path);
-    } 
-
     (void) fi;
 
-    int fd = open(fpath, O_RDONLY);
-    if (fd == -1) return -errno;
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
 
-    printf("from read: %s\n", fpath);
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd; int i = 0;
 
-    int res = pread(fd, buf, size, offset);
-    if (res == -1) res = -errno;
+    // Prepare read variable
+    size_t size_read;
+    size_t total_read = 0;
 
-    close(fd); return res;
+    while (size > 0){
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, i++);
+        fd = fopen(ppath, "rb");
+        if (!fd) break;
+
+        // Get part size
+        fseek(fd, 0L, SEEK_END);
+        size_t size_part = ftell(fd);
+        fseek(fd, 0L, SEEK_SET);
+
+        // Adjust offset
+        if (offset >= size_part) {
+            offset -= size_part;
+            fclose(fd); continue;
+        }
+
+        // Read buffer
+        fseek(fd, offset, SEEK_SET);
+        size_read = fread(buf, 1, size, fd);
+        fclose(fd);
+
+        // Modify loop numbers
+        buf += size_read;
+        size -= size_read;
+        total_read += size_read;
+
+        // Reset offset
+        offset = 0;
+    }
+    return total_read;
 }
 
 static struct fuse_operations arc_oper = {
