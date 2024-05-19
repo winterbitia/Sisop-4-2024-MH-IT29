@@ -14,7 +14,7 @@
 
 /*  
     Soal_3 archeology.c
-    VERSION 2 - rough relic combining
+    VERSION 3 - no longer makes unused combination files
     Amoes Noland 5027231028
 */
 
@@ -60,7 +60,8 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     dp = opendir(fpath);
     if (!dp) return -errno;
 
-    // printf("from readdir: %s\n", fpath);
+    int filecount = 0;
+    printf("dir: %s\n", fpath);
 
     while ((de = readdir(dp)) != NULL) {
         struct stat st;
@@ -68,15 +69,17 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         st.st_ino = de->d_ino;
         st.st_mode = de->d_type << 12;
 
-        if (de->d_name[0] == '0') continue;
+        if (de->d_name[0] == '.') continue;
 
         char cut[MAX_BUFFER];
         strcpy(cut, de->d_name);
         cut[strlen(cut)-4] = '\0';
 
-        char cmd[MAX_BUFFER];
-        sprintf(cmd, "cat %s* >> %s", cut, cut); 
-        system(cmd);
+        printf("ls%d %s\n", filecount++, cut);
+
+        // char cmd[MAX_BUFFER];
+        // sprintf(cmd, "cat %s* >> %s", cut, cut); 
+        // system(cmd);
 
         if (filler(buf, cut, &st, 0)) break;
     }
