@@ -45,7 +45,7 @@ void run_script();
 ```
 
 ### Fungsi add_watermark_and_move
-Fungsi ini berfungsi untuk menambahkan watermark pada setiap gambar dan memindahkannya ke dalam folder dengan prefix "wm". Pada setiap iterasi, fungsi ini menerima path file gambar sebagai argumen, kemudian menambahkan watermark pada gambar tersebut menggunakan perintah shell convert dari ImageMagick. Setelah ditambahkan watermark, gambar dipindahkan ke dalam folder "wm". 
+Fungsi ini berfungsi untuk menambahkan watermark pada setiap gambar dan memindahkannya ke dalam folder dengan prefix "wm". Pada setiap iterasi, fungsi ini menerima path file gambar sebagai argumen, kemudian menambahkan watermark pada gambar tersebut menggunakan perintah shell convert dari ImageMagick. Setelah ditambahkan watermark, gambar akan dipindahkan ke dalam folder "wm". 
 ```c
 // fungsi untuk menambahkan watermark pada gambar dan memindahkannya ke folder "wm"
 void add_watermark_and_move(const char *image_path) {
@@ -212,29 +212,29 @@ int main() {
 ```
 
 ## Dokumentasi Hasil Pengerjaan
-Terminal
+### terminal
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840806961086614/IMG_20240520_024018.jpg?ex=664ba9e0&is=664a5860&hm=885e7f22111780afb0f275779a2150cf2fc6b9b9d09445fa86df7d79dab44003&)
 
 ## Sebelum 
-foto tidak ada watermark, dan belum dipindah ke folder wm
+### foto tidak ada watermark dan belum dipindah ke folder wm
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840682570743959/IMG_20240520_024736.jpg?ex=664ba9c3&is=664a5843&hm=4645039d67927be2eea051a8442abdb10677653748405bfcf70494f4dfe05193&)
 
 ## Sesudah
-foto telah dipindah ke folder wm
+### foto telah dipindah ke folder wm
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840682247651490/IMG_20240520_024639.jpg?ex=664ba9c2&is=664a5842&hm=1e4159c8f2c1b7fa69ac5e7fce695b0a49cd415d14185f38b1540ac93dfdb5b9&)
 
-foto telah berhasil diberi watermark
+### foto telah berhasil diberi watermark
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840680922382386/IMG_20240520_024540.jpg?ex=664ba9c2&is=664a5842&hm=447ab5c047a85d5356b9a9c8ec631af8c6832f38a39958aec004e57b3e3b8c76&)
 
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840681862037576/IMG_20240520_024917.jpg?ex=664ba9c2&is=664a5842&hm=debd9ef08b1e7cb62a84121f7779b0a03718632e1a118d40b075c82da63ebcad&)
 
-membuat folder reverse untuk menyimpan hasil pembalikan (reverse) isi dari file dengan prefix "test"
+### membuat folder reverse untuk menyimpan hasil pembalikan (reverse) isi dari file dengan prefix "test"
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840681572368404/IMG_20240520_024837.jpg?ex=664ba9c2&is=664a5842&hm=035fac719a481686dc76c0786292de771869dd5668148437047c1e591ad691ad&)
 
-hasil pembalikan (reverse) isi dari file dengan prefix "test"
+### hasil pembalikan (reverse) isi dari file dengan prefix "test"
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840680733507685/IMG_20240520_024518.jpg?ex=664ba9c2&is=664a5842&hm=9caf7fe6d4d5d810addb54ac38ef4f267e648ada2734c749f4ec26f803b7d843&)
 
-berhasil mengubah permission pada file "script.sh" (jika dijalankan maka dapat menghapus semua dan isi dari "gallery"), isi dari "gallery" telah berhasil terhapus
+### berhasil mengubah permission pada file "script.sh" (jika dijalankan maka dapat menghapus semua dan isi dari "gallery"), isi dari "gallery" telah berhasil terhapus
 ![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840681295806584/IMG_20240520_024751.jpg?ex=664ba9c2&is=664a5842&hm=8ec2697fe02bb285b656ec8272979f5268728e10ecf441db64811db69e632d7c&)
 
 
