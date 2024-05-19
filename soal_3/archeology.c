@@ -14,18 +14,25 @@
 
 /*  
     Soal_3 archeology.c
-    VERSION 1 - relic fragment listing
+    VERSION 2 - rough relic combining
     Amoes Noland 5027231028
 */
 
+// Definite global variables
+#define MAX_BUFFER 1028
 static const char *dirpath =
 "/home/winter/Documents/ITS/SISOP/Modul4/soal_3/relics";
 
 static int arc_getattr(const char *path, struct stat *stbuf)
 {
     // Get file attributes
-    char fpath[1000];
-    sprintf(fpath,"%s%s",dirpath,path);
+    char fpath[MAX_BUFFER];
+    if(strcmp(path,"/") == 0){
+        path = dirpath;
+        sprintf(fpath,"%s",path);
+    } else {
+        sprintf(fpath, "%s%s",dirpath,path);
+    }
 
     int res = lstat(fpath, stbuf);
     if (res == -1) return -errno;
@@ -37,7 +44,7 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi)
 {
     // Read directory
-    char fpath[1000];
+    char fpath[MAX_BUFFER];
     if(strcmp(path,"/") == 0){
         path = dirpath;
         sprintf(fpath,"%s",path);
@@ -47,9 +54,13 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     DIR *dp;
     struct dirent *de;
-
+    (void) offset;
+    (void) fi;
+    
     dp = opendir(fpath);
     if (!dp) return -errno;
+
+    // printf("from readdir: %s\n", fpath);
 
     while ((de = readdir(dp)) != NULL) {
         struct stat st;
@@ -57,7 +68,17 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         st.st_ino = de->d_ino;
         st.st_mode = de->d_type << 12;
 
-        if (filler(buf, de->d_name, &st, 0)) break;
+        if (de->d_name[0] == '0') continue;
+
+        char cut[MAX_BUFFER];
+        strcpy(cut, de->d_name);
+        cut[strlen(cut)-4] = '\0';
+
+        char cmd[MAX_BUFFER];
+        sprintf(cmd, "cat %s* >> %s", cut, cut); 
+        system(cmd);
+
+        if (filler(buf, cut, &st, 0)) break;
     }
 
     closedir(dp); return 0;
@@ -66,8 +87,20 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 static int arc_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     // Read data from file
-    int fd = open(path, O_RDONLY);
+    char fpath[MAX_BUFFER];
+    if(strcmp(path,"/") == 0){
+        path = dirpath;
+        sprintf(fpath,"%s",path);
+    } else {
+        sprintf(fpath, "%s%s",dirpath,path);
+    } 
+
+    (void) fi;
+
+    int fd = open(fpath, O_RDONLY);
     if (fd == -1) return -errno;
+
+    printf("from read: %s\n", fpath);
 
     int res = pread(fd, buf, size, offset);
     if (res == -1) res = -errno;
