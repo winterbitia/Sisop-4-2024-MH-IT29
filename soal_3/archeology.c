@@ -11,22 +11,31 @@
 #include <stddef.h>
 #include <assert.h>
 #include <sys/stat.h>
+#include <time.h>
 
 /*  
     Soal_3 archeology.c
-    VERSION 4 - proper combined listing and reading
+    VERSION 5 - copy, create, remove
     Amoes Noland 5027231028
 */
 
 // Definite global variables
 #define MAX_BUFFER 1028
+#define MAX_SPLIT  10000
 static const char *dirpath =
 "/home/winter/Documents/ITS/SISOP/Modul4/soal_3/relics";
 
-// Get file attributes
+// Function to get file attributes
 static int arc_getattr(const char *path, struct stat *stbuf)
 {
     memset(stbuf, 0, sizeof(struct stat));
+
+    // Set time and ownership attributes
+    stbuf->st_uid   = getuid();
+    stbuf->st_gid   = getgid();
+    stbuf->st_atime = time(NULL);
+    stbuf->st_mtime = time(NULL);
+
     if (strcmp(path, "/") == 0) {
         // Set link to . and itself if dir with dir perms
         stbuf->st_mode = S_IFDIR | 0755;
@@ -45,7 +54,7 @@ static int arc_getattr(const char *path, struct stat *stbuf)
     // printf("atr: %s\n", fpath);
 
     // Set link to only itself with read only perms
-    stbuf->st_mode = S_IFREG | 0444;
+    stbuf->st_mode = S_IFREG | 0644;
     stbuf->st_nlink = 1;
     stbuf->st_size = 0;
 
@@ -73,7 +82,7 @@ static int arc_getattr(const char *path, struct stat *stbuf)
     return 0;
 }
 
-// Read directory
+// Function to read directory
 static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi)
 {
@@ -95,7 +104,7 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     if (!dp) return -errno;
 
     // DEBUGGING
-    // int filecount = 1;
+    int filecount = 1;
     printf("dir: %s\n", fpath);
 
     // Main loop for directory checking
@@ -112,7 +121,7 @@ static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         cut[strlen(cut)-4] = '\0';
 
         // DEBUGGING
-        // printf("ls%02d %s\n", filecount++, cut);
+        printf("ls%03d: %s\n", filecount++, cut);
 
         if (filler(buf, cut, &st, 0)) break;
     }
@@ -133,7 +142,7 @@ static int arc_read(const char *path, char *buf, size_t size, off_t offset, stru
     char ppath[MAX_BUFFER+4];
     FILE *fd; int i = 0;
 
-    // Prepare read variable
+    // Prepare read variables
     size_t size_read;
     size_t total_read = 0;
 
@@ -142,6 +151,9 @@ static int arc_read(const char *path, char *buf, size_t size, off_t offset, stru
         sprintf(ppath, "%s.%03d", fpath, i++);
         fd = fopen(ppath, "rb");
         if (!fd) break;
+
+        // DEBUGGING
+        printf("read: %s\n", ppath);
 
         // Get part size
         fseek(fd, 0L, SEEK_END);
@@ -170,10 +182,187 @@ static int arc_read(const char *path, char *buf, size_t size, off_t offset, stru
     return total_read;
 }
 
+// Function to write data into file
+static int arc_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+{
+    (void) fi;
+
+    // DEBUGGING
+    printf("init write: %s\n", path);
+
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd;
+
+    // Prepare write variable
+    int    pcurrent = offset / MAX_SPLIT;
+    size_t poffset  = offset % MAX_SPLIT;
+    size_t total_write = 0;
+
+    // Main write loop
+    while (size > 0){
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        fd = fopen(ppath, "r+b");
+        if (!fd) {
+            fd = fopen(ppath, "wb");
+            if (!fd) return -errno;
+        }
+
+        // DEBUGGING
+        printf("write: %s\n", ppath);
+
+        // Determine write size buffer
+        fseek(fd, poffset, SEEK_SET);
+        size_t size_write;
+        if (size > (MAX_SPLIT - poffset))
+             size_write = MAX_SPLIT - poffset;
+        else size_write = size;
+
+        // Write into one file
+        fwrite(buf, 1, size_write, fd);
+        fclose(fd);
+
+        // Modify loop numbers
+        buf += size_write;
+        size -= size_write;
+        total_write += size_write;
+
+        // Reset offset
+        poffset = 0;
+    }
+    return total_write;
+}
+
+// Function to unlink item
+static int arc_unlink(const char *path)
+{
+    // Get full path of item and prep part buffer
+    char fpath[MAX_BUFFER];
+    char ppath[MAX_BUFFER+4];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    int pcurrent = 0;    
+    while(1){
+        // DEBUGGING
+        printf("unlink: %s\n", ppath);
+
+        // Loop through all parts
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        int res = unlink(ppath);
+        if (res == -1){
+            if (errno == ENOENT) break;
+            return -errno;
+        }
+    }
+    return 0;
+}
+
+// Function to create item
+static int arc_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+    (void) fi;
+
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s.000",dirpath,path);
+
+    // DEBUGGING
+    printf("create: %s\n", path);
+
+    // Create item
+    int res = creat(fpath, mode);
+    if (res == -1) return -errno;
+
+    close(res); return 0;
+}
+
+// Function to truncate size
+static int arc_truncate(const char *path, off_t size)
+{
+    // Get full path of item and prep part buffer
+    char fpath[MAX_BUFFER];
+    char ppath[MAX_BUFFER+4];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Prepare loop variables
+    int pcurrent_t = 0;
+    size_t size_part;
+    off_t size_rmn = size;
+
+    // Truncate the parts
+    while (size_rmn > 0){
+        // DEBUGGING
+        printf("truncate: s\n", ppath);
+
+        // Get size of part
+        sprintf(ppath, "%s.%03d", fpath, pcurrent_t++);
+        if (size_rmn > MAX_SPLIT)
+             size_part = MAX_SPLIT;
+        else size_part = size_rmn;
+
+        // Truncate based on part size
+        int res = truncate(ppath, size_part);
+        if (res == -1) return -errno;
+        size_rmn -= size_part;
+    }
+
+    // Unlink the parts
+    int pcurrent_u = 0;    
+    while(1){
+        // DEBUGGING
+        printf("unlink: %s\n", ppath);
+
+        // Loop through all parts
+        sprintf(ppath, "%s.%03d", fpath, pcurrent_u++);
+        int res = unlink(ppath);
+        if (res == -1){
+            if (errno == ENOENT) break;
+            return -errno;
+        }
+    }
+
+    return 0;
+}
+
+// Function to get time attr by the ns (nanosecond)
+static int arc_utimens(const char *path, const struct timespec ts[2])
+{
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s", dirpath, path);
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    int pcurrent = 0;
+
+    // Loop through all parts
+    while (1) {
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        int res = utimensat(AT_FDCWD, ppath, ts, 0);
+        if (res == -1) {
+            if (errno == ENOENT) break;
+            return -errno;
+        }
+    }
+
+    return 0;
+}
+
+
 static struct fuse_operations arc_oper = {
     .getattr    = arc_getattr,
     .readdir    = arc_readdir,
     .read       = arc_read,
+    .write      = arc_write,
+    .unlink     = arc_unlink,
+    .create     = arc_create,
+    .truncate   = arc_truncate,
+    .utimens    = arc_utimens,
 };
 
 int main(int argc, char *argv[])
