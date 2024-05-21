@@ -1,171 +1,177 @@
-#include <dirent.h> // directory-related functions
-#include <stdio.h> // standard input/output
-#include <stdlib.h> // general utility functions
-#include <string.h> // string manipulation functions
-#include <sys/stat.h> // file status and mode related functions
-#include <sys/types.h> // system data types
-#include <unistd.h> // posix api functions
+#define FUSE_USE_VERSION 31  
+#include <fuse.h>            
+#include <errno.h>           
+#include <dirent.h>          
+#include <stdio.h>           
+#include <stdlib.h>          
+#include <string.h>          
+#include <sys/stat.h>        
+#include <sys/types.h>       
+#include <unistd.h>          
 
 #define MAX_PATH_LENGTH 512  
-// mendefinisikan panjang maksimum untuk path
-// to ensure safe memory allocation and prevent buffer overflows
+// Mendefinisikan panjang maksimal path
 
-// fungsi untuk menambahkan watermark dan memindahkan gambar
-void add_watermark_and_move(const char *image_path);
-
-// fungsi untuk memproses file di folder "gallery"
-void process_gallery();
-
-// fungsi untuk membalik isi file dengan prefix "test"
-void reverseTestFiles();
-
-// fungsi untuk menjalankan script.sh
-void run_script();
-
-// fungsi untuk menambahkan watermark pada gambar dan memindahkannya ke folder "wm"
-void add_watermark_and_move(const char *image_path) {
-    char command[1024]; // buffer perintah shell
-    char destination_path[MAX_PATH_LENGTH]; // buffer path tujuan
-
-    // membuat folder "wm" jika belum ada
-    mkdir("gallery/wm", 0777);
-
-    // membuat path tujuan untuk menyimpan file gambar di dalam folder "gallery/wm"
-    snprintf(destination_path, sizeof(destination_path), "gallery/wm/%s", strrchr(image_path, '/') + 1);
-
-    // instruksi untuk menambahkan watermark dan memindahkan gambar
-    snprintf(command, sizeof(command), "convert \"%s\" -gravity south -pointsize 36 -fill white -draw \"text 0,0 'inikaryakita.id'\" \"%s\" && mv \"%s\" \"%s\"",
-        image_path, image_path, image_path, destination_path);
-             
-    // eksekusi instruksi watermark dan pemindahan gambar
-    system(command);
+// Fungsi untuk menambah watermark ke gambar
+void apply_watermark(const char *src_path, const char *dst_path) {
+    char command[1024];  
+    // Untuk menambahkan watermark menggunakan alat convert dari ImageMagick
+    snprintf(command, sizeof(command), "convert \"%s\" -gravity south -pointsize 36 -fill white -draw \"text 0,0 'inikaryakita.id'\" \"%s\"",
+             src_path, dst_path);
+    system(command); 
 }
 
-// fungsi untuk memproses file di dalam folder "gallery"
-void process_gallery() {
-    DIR *dir;  // pointer ke direktori
-    struct dirent *ent;  // struktur untuk menyimpan informasi entri direktori
+// Fungsi untuk mereverse
+void reverse_file_content(const char *src_path, const char *dst_path) {
+    FILE *file = fopen(src_path, "r");  
+    // Membuka file sumber untuk membaca
+    FILE *outputFile = fopen(dst_path, "w");  
+    // Membuka file tujuan untuk write
 
-    // membuka direktori "gallery"
-    if ((dir = opendir("gallery")) != NULL) {
-        
-        // membaca setiap entri dalam direktori
-        while ((ent = readdir(dir)) != NULL) {
-            
-            // memeriksa ekstensi file untuk memastikan itu adalah gambar
-            if (strstr(ent->d_name, ".jpeg") || strstr(ent->d_name, ".jpg") || strstr(ent->d_name, ".png") ||
-                strstr(ent->d_name, ".JPEG") || strstr(ent->d_name, ".JPG") || strstr(ent->d_name, ".PNG")) {
-                    
-                char src_path[MAX_PATH_LENGTH];  // buffer untuk menyimpan path sumber
-                
-                // menggabungkan nama file dari entri direktori ke dalam path "gallery" dan menyimpan hasilnya di `src_path`.
-                snprintf(src_path, sizeof(src_path), "gallery/%s", ent->d_name);
-
-                // menambahkan watermark dan memindahkan file ke folder "wm"
-                add_watermark_and_move(src_path);
-                printf("file %s moved to the 'wm' folder with watermark.\n", ent->d_name);
-            }
-        }
-        
-        // menutup direktori setelah selesai
-        closedir(dir);
-    } else {
-        // menampilkan pesan kesalahan jika direktori tidak dapat dibuka
-        perror("could not open gallery directory");
-    }
-}
-
-// fungsi untuk membalik isi file dengan prefix "test" dan menyimpannya dalam file baru
-void reverseTestFiles() {
-    struct dirent *entry;  // struktur untuk menyimpan informasi entri direktori
-    DIR *dp = opendir("bahaya");  // membuka direktori "bahaya"
-
-    // memeriksa apakah direktori berhasil dibuka
-    if (dp == NULL) {
-        perror("opendir: bahaya");  // menampilkan pesan kesalahan
+    if (file == NULL || outputFile == NULL) {  
+        // Memeriksa eror
+        perror("fopen");
         return;
     }
 
-    // membaca setiap entri dalam direktori
-    while ((entry = readdir(dp))) {
-        
-        // memeriksa apakah entri adalah file reguler dan memiliki prefix "test"
-        if (entry->d_type == DT_REG && strncmp(entry->d_name, "test", 4) == 0) {
-            
-            char filePath[MAX_PATH_LENGTH];  // buffer untuk path file sumber
-            
-            // buat path file dengan nama dari entri direktori di folder "bahaya".
-            snprintf(filePath, sizeof(filePath), "bahaya/%s", entry->d_name);
-            
-            char outputPath[MAX_PATH_LENGTH];  // buffer untuk path file output
-            
-            // buat path file dengan nama "reversed_" ditambah nama asli file di dalam folder "bahaya"
-            snprintf(outputPath, sizeof(outputPath), "bahaya/reversed_%s", entry->d_name);
+    fseek(file, 0, SEEK_END);  
+    // Memindahkan penunjuk file ke akhir file
+    long fileSize = ftell(file);  
+    // Mendapatkan ukuran file
+    fseek(file, 0, SEEK_SET);  
+    // Memindahkan penunjuk file kembali ke awal
 
-            // membuka file sumber "filePath" dalam mode "r" (read) untuk membaca isinya
-            FILE *file = fopen(filePath, "r");
-            
-            // membuka file output "outputPath" dalam mode "w" (write) untuk menulis data baru ke dalamnya
-            FILE *outputFile = fopen(outputPath, "w");  
+    char *content = malloc(fileSize + 1);  
+    // Mengalokasikan memori untuk menyimpan konten file
+    fread(content, 1, fileSize, file);  
+    // Membaca konten file ke dalam memori
+    content[fileSize] = '\0';  
 
-            // memeriksa apakah file berhasil dibuka
-            if (file == NULL || outputFile == NULL) {
-                perror("fopen");  // menampilkan pesan kesalahan
-                continue;
-            }
-
-            // mendapatkan ukuran file 
-            fseek(file, 0, SEEK_END); // memposisikan pointer file ke akhir file
-            long fileSize = ftell(file); // mendapatkan posisi pointer file saat ini, yang merupakan ukuran file
-            fseek(file, 0, SEEK_SET); // memposisikan pointer file kembali ke awal file
-
-            // membaca isi file
-            char *content = malloc(fileSize + 1);  
-            // alokasi memori untuk isi file
-            fread(content, 1, fileSize, file);
-            // add null terminator (if buffer allows), handle potential overflow
-            content[fileSize] = '\0';
-
-            // membalik isi file dan menulisnya ke file output
-            for (long i = fileSize - 1; i >= 0; i--) {
-                fputc(content[i], outputFile);
-            }
-
-            // membebaskan memori dan menutup file
-            free(content);
-            fclose(file);
-            fclose(outputFile);
-        }
+    for (long i = fileSize - 1; i >= 0; i--) {  
+        // Menulis konten file dalam urutan terbalik
+        fputc(content[i], outputFile);
     }
 
-    // menutup direktori setelah selesai
-    closedir(dp);
+    free(content);  
+    // Membebaskan memori yang dialokasikan
+    fclose(file);  
+    // Menutup file sumber
+    fclose(outputFile);  
+    // Menutup file tujuan
 }
 
-// fungsi untuk menjalankan script.sh
-void run_script() {
-    // menjalankan script.sh
-    system("./bahaya/script.sh");
-}
-
-int main() {
-    // memproses folder "gallery" untuk menambahkan watermark pada gambar
-    process_gallery();
-
-    // mengubah permission script.sh jika berpotensi menghapus "gallery"
-    if (chmod("bahaya/script.sh", 0755) < 0) {
-        perror("chmod: script.sh");  // menampilkan pesan kesalahan
+// Fungsi FUSE getattr untuk mendapatkan atribut file
+static int do_getattr(const char *path, struct stat *st) {
+    memset(st, 0, sizeof(struct stat));  
+    // Mengosongkan struktur stat
+    if (strcmp(path, "/") == 0 || strcmp(path, "/gallery") == 0 || strcmp(path, "/bahaya") == 0) {
+        st->st_mode = S_IFDIR | 0755;  
+        // Mengatur mode menjadi direktori dengan izin 755
+        st->st_nlink = 2;  
+        // Mengatur jumlah link menjadi 2
+    } else {
+        st->st_mode = S_IFREG | 0644;  
+        // Mengatur mode menjadi file reguler dengan izin 644
+        st->st_nlink = 1;  // Mengatur jumlah link menjadi 1
+        st->st_size = 1024;  // Mengatur ukuran arbitrer (dapat disesuaikan sesuai kebutuhan)
     }
-
-    // memproses file dalam folder "bahaya" untuk membalik isi file dengan prefix "test"
-    reverseTestFiles();
-
-    // menjalankan script.sh
-    run_script();
-
-    // menghapus folder "gallery" dan "bahaya" beserta isinya sesuai script.sh
-    system("rm -rf gallery bahaya");
-
     return 0;  
 }
 
+// Fungsi FUSE readdir untuk membaca konten direktori
+static int do_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+    (void)offset;  
+    (void)fi;      
+
+    if (strcmp(path, "/") == 0) {  
+        // Jika direktori root sedang dibaca
+        filler(buf, ".", NULL, 0);  
+        // Menambahkan direktori saat ini
+        filler(buf, "..", NULL, 0);  
+        // Menambahkan direktori induk
+        filler(buf, "gallery", NULL, 0);  
+        // Menambahkan direktori "gallery"
+        filler(buf, "bahaya", NULL, 0);  
+        // Menambahkan direktori "bahaya"
+    } else if (strcmp(path, "/gallery") == 0 || strcmp(path, "/bahaya") == 0) {  // Jika direktori gallery atau bahaya sedang dibaca
+        DIR *dp;
+        struct dirent *de;
+        if ((dp = opendir(path)) == NULL) {  // Membuka direktori
+            return -errno;  // Mengembalikan kesalahan jika gagal
+        }
+        while ((de = readdir(dp)) != NULL) {  
+            // Membaca entri direktori
+            filler(buf, de->d_name, NULL, 0);  
+            // Menambahkan setiap entri ke buffer
+        }
+        closedir(dp);  
+    }
+    return 0;  
+}
+
+// Fungsi FUSE open untuk membuka file
+static int do_open(const char *path, struct fuse_file_info *fi) {
+    return 0;  
+}
+
+// Fungsi FUSE read untuk membaca konten file
+static int do_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    (void)fi;  
+
+    char src_path[MAX_PATH_LENGTH];  
+    char temp_path[MAX_PATH_LENGTH];  
+    snprintf(src_path, sizeof(src_path), ".%s", path);  
+
+    if (strstr(path, "/gallery/") == path) {  
+        snprintf(temp_path, sizeof(temp_path), "/tmp/watermarked%s", path + strlen("/gallery"));  
+        apply_watermark(src_path, temp_path);  
+        // Menerapkan watermark ke file
+        FILE *file = fopen(temp_path, "r");  
+        // Membuka file yang diberi watermark
+        if (file == NULL) {
+            return -errno;  
+        }
+        fseek(file, offset, SEEK_SET);  
+        size_t bytes_read = fread(buf, 1, size, file);  
+        // Membaca konten file ke buffer
+        fclose(file);  
+        return bytes_read;  
+        // Mengembalikan jumlah byte yang dibaca
+    } else if (strstr(path, "/bahaya/") == path) {  
+        // Jika membaca dari bahaya
+        snprintf(temp_path, sizeof(temp_path), "/tmp/reversed%s", path + strlen("/bahaya"));  
+        // Membuat path sementara untuk file yang dibalik
+        reverse_file_content(src_path, temp_path);  
+        // Membalikkan konten file
+        FILE *file = fopen(temp_path, "r");  
+        // Membuka file yang dibalik
+        if (file == NULL) {
+            return -errno;  
+        }
+        fseek(file, offset, SEEK_SET);  
+        size_t bytes_read = fread(buf, 1, size, file);  
+        // Membaca konten file ke buffer
+        fclose(file);  
+        return bytes_read;  
+    }
+    return -ENOENT;  
+    
+}
+
+// Mendefinisikan struktur operasi dengan operasi FUSE
+static struct fuse_operations operations = {
+    .getattr = do_getattr,  
+    .readdir = do_readdir,  
+    .open = do_open,        
+    .read = do_read,        
+};
+
+int main(int argc, char *argv[]) {
+    // Memastikan direktori ada
+    mkdir("gallery", 0755);  // Membuat direktori gallery dengan izin 755
+    mkdir("bahaya", 0755);  // Membuat direktori bahaya dengan izin 755
+
+    // Fungsi utama FUSE untuk memasang sistem berkas
+    return fuse_main(argc, argv, &operations, NULL);  
+    // Memulai sistem berkas FUSE
+}
