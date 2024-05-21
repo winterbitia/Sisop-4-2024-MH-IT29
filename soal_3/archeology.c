@@ -43,7 +43,7 @@ static int arc_getattr(const char *path, struct stat *stbuf)
         return 0;
 
         // DEBUGGING
-        // printf("attr dir\n");
+        printf("attr dir\n");
     }
 
     // Get full path of item
@@ -51,7 +51,7 @@ static int arc_getattr(const char *path, struct stat *stbuf)
     sprintf(fpath, "%s%s",dirpath,path);
 
     // DEBUGGING
-    // printf("atr: %s\n", fpath);
+    printf("atr: %s\n", path);
 
     // Set link to only itself with read only perms
     stbuf->st_mode = S_IFREG | 0644;
@@ -281,54 +281,6 @@ static int arc_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     close(res); return 0;
 }
 
-// Function to truncate size
-static int arc_truncate(const char *path, off_t size)
-{
-    // Get full path of item and prep part buffer
-    char fpath[MAX_BUFFER];
-    char ppath[MAX_BUFFER+4];
-    sprintf(fpath, "%s%s",dirpath,path);
-
-    // Prepare loop variables
-    int pcurrent_t = 0;
-    size_t size_part;
-    off_t size_rmn = size;
-
-    // Truncate the parts
-    while (size_rmn > 0){
-        // DEBUGGING
-        printf("truncate: s\n", ppath);
-
-        // Get size of part
-        sprintf(ppath, "%s.%03d", fpath, pcurrent_t++);
-        if (size_rmn > MAX_SPLIT)
-             size_part = MAX_SPLIT;
-        else size_part = size_rmn;
-
-        // Truncate based on part size
-        int res = truncate(ppath, size_part);
-        if (res == -1) return -errno;
-        size_rmn -= size_part;
-    }
-
-    // Unlink the parts
-    int pcurrent_u = 0;    
-    while(1){
-        // DEBUGGING
-        printf("unlink: %s\n", ppath);
-
-        // Loop through all parts
-        sprintf(ppath, "%s.%03d", fpath, pcurrent_u++);
-        int res = unlink(ppath);
-        if (res == -1){
-            if (errno == ENOENT) break;
-            return -errno;
-        }
-    }
-
-    return 0;
-}
-
 // Function to get time attr by the ns (nanosecond)
 static int arc_utimens(const char *path, const struct timespec ts[2])
 {
@@ -353,7 +305,6 @@ static int arc_utimens(const char *path, const struct timespec ts[2])
     return 0;
 }
 
-
 static struct fuse_operations arc_oper = {
     .getattr    = arc_getattr,
     .readdir    = arc_readdir,
@@ -361,7 +312,6 @@ static struct fuse_operations arc_oper = {
     .write      = arc_write,
     .unlink     = arc_unlink,
     .create     = arc_create,
-    .truncate   = arc_truncate,
     .utimens    = arc_utimens,
 };
 
