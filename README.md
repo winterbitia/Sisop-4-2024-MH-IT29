@@ -557,5 +557,82 @@ Di dalam fungsi write, dimulai dengan mendapatkan segala variabel yang terlibat:
     size_t total_write = 0;
 ```
 
+Loop dilakukan melewati semua part dalam sebuah nama part utuh, dan berakhir bila size yang dibawa oleh parameter FUSE sudah terbaca semua. Dari setiap file yang terbaca, akan dicoba untuk dibuka dengan permission read+, bila file tidak ada, maka akan dicoba dengan permission hanya write:
+
+```c
+    // Main write loop
+    while (size > 0){
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        fd = fopen(ppath, "r+b");
+        if (!fd) {
+            fd = fopen(ppath, "wb");
+            if (!fd) return -errno;
+        }
+```
+
+Langkah berikutnya adalah menentukan ukuran yang ditulis dengan membandingkan dengan parameter size yang disampaikan melalui FUSE agar berjumlah sesuai size, atau mengurangi 10K dengan offset part yang sedang dilalui:
+
+```c
+        // Determine write size buffer
+        fseek(fd, poffset, SEEK_SET);
+        size_t size_write;
+        if (size > (MAX_SPLIT - poffset))
+             size_write = MAX_SPLIT - poffset;
+        else size_write = size;
+```
+
+Setelah itu dilakukan pembacaan sesuai offset dan atur angka-angka yang berhubungan untuk mengakhiri loop:
+
+```c
+        // Write into one file
+        fwrite(buf, 1, size_write, fd);
+        fclose(fd);
+
+        // Modify loop numbers
+        buf += size_write;
+        size -= size_write;
+        total_write += size_write;
+
+        // Reset offset
+        poffset = 0;
+    }
+```
+
+Di akhir fungsi dilakukan return total filesize yang dibaca untuk memenuhi kriteria dari FUSE:
+
+```c
+    return total_write;
+```
+### Delete melalui FUSE
+
+Untuk melakukan penghapusan melalui FUSE, harus dilakukan delete seluruh part yang terlibat dari satu file utuh yang di dalam FUSE. Hal ini dilakukan dengan fungsi:
+
+```c
+// Function to unlink item
+static int arc_unlink(const char *path)
+{
+    // Get full path of item and prep part buffer
+    char fpath[MAX_BUFFER];
+    char ppath[MAX_BUFFER+4];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    int pcurrent = 0;    
+    while(1){
+        // DEBUGGING
+        printf("unlink: %s\n", ppath);
+
+        // Loop through all parts
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        int res = unlink(ppath);
+        if (res == -1){
+            if (errno == ENOENT) break;
+            return -errno;
+        }
+    }
+    return 0;
+}
+```
+
 (work in progress)
 
