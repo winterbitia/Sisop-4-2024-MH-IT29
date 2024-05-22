@@ -612,27 +612,102 @@ Untuk melakukan penghapusan melalui FUSE, harus dilakukan delete seluruh part ya
 // Function to unlink item
 static int arc_unlink(const char *path)
 {
+    // Kode
+}
+```
+
+Hal pertama yang dilakukan adalah untuk mempersiapkan variabel untuk path lengkap dan path dari setiap part yang akan di delete:
+
+```c
     // Get full path of item and prep part buffer
     char fpath[MAX_BUFFER];
     char ppath[MAX_BUFFER+4];
     sprintf(fpath, "%s%s",dirpath,path);
+```
 
+Lalu dimulai loop melewati seluruh part dari sebuah file utuh dan melakukan unlink untuk delete:
+
+```c
     int pcurrent = 0;    
     while(1){
-        // DEBUGGING
-        printf("unlink: %s\n", ppath);
-
         // Loop through all parts
         sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+```
+
+Untuk unlink dan menunjukkan output, terdapat 3 kemungkinan
+* Delete berhasil dan tidak ada output tambahan
+* Delete gagal karena tidak ada file, maka break akan dilakukan dari while loop, bisa berarti bahwa tidak ada file tambahan
+* Error selain tidak ada file, return error number
+
+```c
         int res = unlink(ppath);
         if (res == -1){
             if (errno == ENOENT) break;
             return -errno;
         }
     }
+```
+### Tambahan: Fungsi Time
+
+Fungsi tambahan ini diperlukan saat membuat sebuah file karena diperlukan oleh FUSE untuk mencatat secara real-time. Menggunakan cara yang cukup mirip dengan sebelum-sebelumnya untuk melakukan looping melalui semua part dari satu file gabungan, fungsinya sebagai berikut:
+
+```c
+// Function to get time attr by the ns (nanosecond)
+static int arc_utimens(const char *path, const struct timespec ts[2])
+{
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s", dirpath, path);
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    int pcurrent = 0;
+
+    // Loop through all parts
+    while (1) {
+        sprintf(ppath, "%s.%03d", fpath, pcurrent++);
+        int res = utimensat(AT_FDCWD, ppath, ts, 0);
+        if (res == -1) {
+            if (errno == ENOENT) break;
+            return -errno;
+        }
+    }
+
     return 0;
 }
 ```
 
-(work in progress)
+### Samba Server
 
+Direktori report akan berisi seluruh relic yang sudah digabung melalui FUSE, dari FUSE akan dicopy ke dalam report dengan command `cp <fuse>/* report` dan dapat dimulai sebuah Samba server untuk membagikan folder dengan cara menambahkan contoh konfigurasi sebagai berikut:
+
+```conf
+[report]
+    comment = Archeology Relic Report
+    path = /home/winter/Documents/ITS/SISOP/Modul4/soal_3/report
+    read only = no
+    browsable = yes
+    writable = yes
+    guest ok = no
+```
+
+### Dokumentasi
+
+#### Listing
+![list](https://media.discordapp.net/attachments/1071478813566976151/1242728335646130217/Screenshot_20240522_133143.png?ex=664ee473&is=664d92f3&hm=be727694c0bc3961f3231f4a008eba3bc5cde68e17308ccd48a833d8d2c7f6ed&=&format=webp&quality=lossless&width=1210&height=681)
+
+#### Copy ke luar FUSE
+![out copy](https://media.discordapp.net/attachments/1071478813566976151/1242728335088291871/Screenshot_20240522_133231.png?ex=664ee473&is=664d92f3&hm=b4d652b86e879d2c7bdd5b0620845434114f0565e7e72d9babd0c5a0323bfb55&=&format=webp&quality=lossless&width=1210&height=681)
+
+#### Copy ke dalam FUSE
+![in copy](https://media.discordapp.net/attachments/1071478813566976151/1242728334513803285/Screenshot_20240522_133314.png?ex=664ee473&is=664d92f3&hm=e36d0973183c5a2963a871309edc5bd7f485167670969ee20e856cd68ba1a305&=&format=webp&quality=lossless&width=1210&height=681)
+
+#### Delete file melalui FUSE
+![delete](https://media.discordapp.net/attachments/1071478813566976151/1242728334123597864/Screenshot_20240522_133346.png?ex=664ee473&is=664d92f3&hm=79f29ccc6f3a9ee1a2256c6badc1d591377757784eaaabf2ce35e29b3713c4e2&=&format=webp&quality=lossless&width=1210&height=681)
+
+#### Samba Server 
+![samba](https://media.discordapp.net/attachments/1071478813566976151/1242728333658165318/Screenshot_20240522_133742.png?ex=664ee473&is=664d92f3&hm=925299523689aaa12e81b4937709a0e68e05a29e9ce334db4986618fd34f0a9c&=&format=webp&quality=lossless&width=1210&height=681)
+
+### Kendala
+
+Tidak ada, dari yang saya temukan.
