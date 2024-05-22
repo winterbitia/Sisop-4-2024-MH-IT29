@@ -246,3 +246,316 @@ int main() {
 
 > Dikerjakan oleh: Amoes Noland (5027231028)
 
+Di dalam soal 3 ini, kita disuruh untuk membuat sebuah FUSE untuk menggabungkan pecahan relic berharga tanpa menyentuh isi folder relic secara langsung agar tergabung dengan mudah.
+
+### Inisialisasi FUSE
+
+Untuk membangun sebuah FUSE yang cocok bagi kasus ini, dimulai dari menentukan beberapa library dan variabel penting:
+
+```c
+#define FUSE_USE_VERSION 31
+
+#include <fuse.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stddef.h>
+#include <assert.h>
+#include <sys/stat.h>
+#include <time.h>
+
+// Definite global variables
+#define MAX_BUFFER 1028  // For universal buffer
+#define MAX_SPLIT  10000 // For 10K splits
+static const char *dirpath =
+"/home/winter/Documents/ITS/SISOP/Modul4/soal_3/relics"; // Full path
+```
+
+Dari library fuse yang sudah ter-install dan terdefinisi, dapat dipanggil melalui main dengan menentukan daftar fungsi dan menambahkan permission lengkap di dalam main:
+
+```c
+static struct fuse_operations arc_oper = {
+    .getattr    = arc_getattr,
+    .readdir    = arc_readdir,
+    .read       = arc_read,
+    .write      = arc_write,
+    .unlink     = arc_unlink,
+    .create     = arc_create,
+    .utimens    = arc_utimens,
+};
+
+int main(int argc, char *argv[])
+{
+    umask(0);
+    return fuse_main(argc, argv, &arc_oper, NULL);
+}
+```
+
+### Listing
+
+Ketika dilakukan listing di melalui FUSE, yang muncul adalah isi folder relics yang sudah tergabung seluruh pecahannya menjadi satu bagian utuh.
+
+Untuk memperoleh atribut dari setiap file yang akan digabung, diperlukan fungsi `getattr`, yang diimplementasikan sebagai berikut:
+
+```c
+// Function to get file attributes
+static int arc_getattr(const char *path, struct stat *stbuf)
+{
+    // kode
+}
+```
+
+Informasi pertama yang saya masukkan adalah data pemilik dan waktu akses/modifikasi (sesuai library `time.h`):
+
+```c
+    // Set time and ownership attributes
+    stbuf->st_uid   = getuid();
+    stbuf->st_gid   = getgid();
+    stbuf->st_atime = time(NULL);
+    stbuf->st_mtime = time(NULL);
+```
+
+Setelah itu, informasi berikutnya adalah mode permission dan menentukan jumlah link (2 untuk direktori karena direktori terhubung dengan `.` dan direktori itu tersendiri), hal ini dilakukan berdasarkan full path apabila `/` atau sebuah item biasa:
+
+```c
+    if (strcmp(path, "/") == 0) {
+        // Set link to . and itself if dir with dir perms
+        stbuf->st_mode = S_IFDIR | 0755;
+        stbuf->st_nlink = 2;
+        return 0;
+    }
+
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Set link to only itself with read only perms
+    stbuf->st_mode = S_IFREG | 0644;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = 0;
+```
+
+Setelah diketahui bahwa sumber atribut yang dicari bukan merupakan direktori, maka dilakukan looping sejumlah seluruh part yang ada dari sebuah item dari relics, sehingga dapat dijumlahkan file size untuk dikirim ke stat buffer:
+
+```c
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd; int i = 0;
+
+    // Gets total size of all parts in a loop
+    while(1){
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, i++);
+        fd = fopen(ppath, "rb");
+        if (!fd) break;
+
+        // Adds filesize to stat buffer
+        fseek(fd, 0L, SEEK_END);
+        stbuf->st_size += ftell(fd);
+        fclose(fd);
+    }
+
+    if (i==1) return -errno;
+    return 0;
+```
+
+Setelah memiliki fungsi untuk mendapatkan atribut sebuah item, maka dapat mulai dikirim stat ke dalam fungsi membaca direktori:
+
+```c
+static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+{
+    // kode
+}
+```
+
+Dalam setiap command `ls -a` diperlukan informasi lengkap, sehingga kita juga tambahkan tampilan untuk direktori saat ini, dan direktori parent:
+
+```c
+    // Fills directory listing
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+```
+
+Setelah itu mulai persiapan membaca direktori relics dengan mendapatkan path lengkap dan mempersiapkan sistem pembacaan direktori:
+
+```c
+    // Handle path
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Handles directory opening
+    DIR *dp;
+    struct dirent *de;
+    dp = opendir(fpath);
+    if (!dp) return -errno;
+```
+
+Loop utama dimulai dengan menyiapkan stat yang diambil dari getattr dengan menghubungkannya dengan node directory entry:
+
+```c
+    while ((de = readdir(dp)) != NULL) {
+        struct stat st;
+        memset(&st, 0, sizeof(st));
+        st.st_ino = de->d_ino;
+        st.st_mode = de->d_type << 12;
+```
+
+Loop dilakukan melewati seluruh file di dalam direktori, tetapi agar hanya dilakukan listing satu kali pada setiap item saat `ls` dipanggil, dilakukan pengecekan agar hanya terpanggil pada part `.000` yang dimiliki semua file pada folder relics. Lalu dilakukan pemotongan nama file sehingga hanya ditunjukkan nama file tanpa angka part:
+
+```c
+        if (strstr(de->d_name, ".000") == NULL) continue;
+
+        char cut[MAX_BUFFER];
+        strcpy(cut, de->d_name);
+        cut[strlen(cut)-4] = '\0';
+```
+
+Untuk mengakhiri loop maka dipanggil fungsi filler, dan akan break dari loop bila filler menunjukkan return value 1 untuk jaga-jaga. Selain itu seluruh fungsi diakhiri oleh menutup direktori yang sudah dibuka sebelumnya.
+
+```c
+        if (filler(buf, cut, &st, 0)) break;
+    }
+    closedir(dp); return 0;
+```
+
+### Copy dari FUSE ke luar
+
+Dalam melakukan copy dari FUSE ke luar, file yang dicopy adalah hasil gabungan seluruh relics menjadi satu bagian yang utuh. Untuk ini diperlukan fungsi untuk membaca isi file secara utuh:
+
+```c
+static int arc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+{
+    // Kode
+}
+```
+
+Langkah pertama yang dilakukan adalah menyiapkan beberapa variabel untuk:
+* Path lengkap file dari FUSE
+* Path untuk part dalam FUSE
+* Jumlah part yang dilewati
+* Size file yang dibaca
+* Total size file yang sudah dibaca
+
+```c
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd; int i = 0;
+
+    // Prepare read variables
+    size_t size_read;
+    size_t total_read = 0;
+```
+
+Loop dilakukan melewati semua part dalam sebuah nama part utuh, dan berakhir bila size yang dibawa oleh parameter FUSE sudah terbaca semua:
+
+```c
+    while (size > 0){
+        // Loops through all part numbers
+        sprintf(ppath, "%s.%03d", fpath, i++);
+        fd = fopen(ppath, "rb");
+        if (!fd) break;
+```
+
+Mendapatkan file size dari part dilakukan dengan menggeser pointer dari part dan meluruskan offset bila melebihi ukuran file size dari part:
+
+```c
+        // Get part size
+        fseek(fd, 0L, SEEK_END);
+        size_t size_part = ftell(fd);
+        fseek(fd, 0L, SEEK_SET);
+
+        // Adjust offset
+        if (offset >= size_part) {
+            offset -= size_part;
+            fclose(fd); continue;
+        }
+```
+
+Setelah itu dilakukan pembacaan sesuai offset dan atur angka-angka yang berhubungan untuk mengakhiri loop:
+
+```c
+        // Read buffer
+        fseek(fd, offset, SEEK_SET);
+        size_read = fread(buf, 1, size, fd);
+        fclose(fd);
+
+        // Modify loop numbers
+        buf += size_read;
+        size -= size_read;
+        total_read += size_read;
+
+        // Reset offset
+        offset = 0;
+    }
+```
+
+Di akhir fungsi dilakukan return total filesize yang dibaca untuk memenuhi kriteria dari FUSE:
+
+```c
+    return total_read;
+```
+
+### Copy/Membuat file ke dalam FUSE
+
+Dalam menambahkan file baru ke dalam FUSE, harus dibentuk pecahan dalam folder relics sesuai dengan ukuran data yang tertulis. Ada dua fungsi yang terlibat dalam keperluan ini:
+
+```c
+// Function to write data into file
+static int arc_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+{
+    // Kode
+}
+
+// Function to create item
+static int arc_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+    // Kode
+}
+```
+
+Di dalam fungsi create, dilakukan dengan membentuk part `.000` dalam folder relics:
+
+```c
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s.000",dirpath,path);
+
+    // Create item
+    int res = creat(fpath, mode);
+    if (res == -1) return -errno;
+
+    close(res); return 0;
+```
+
+Di dalam fungsi write, dimulai dengan mendapatkan segala variabel yang terlibat:
+* Path lengkap file yang akan dibuat FUSE
+* Path untuk part dalam FUSE
+* Jumlah part yang sedang ditulis (offset dibagi 10K)
+* Offset part yang sedang ditulis (offset modulo 10K)
+* Total yang sudah ditulis
+
+```c
+    // Get full path of item
+    char fpath[MAX_BUFFER];
+    sprintf(fpath, "%s%s",dirpath,path);
+
+    // Buffers for part looping
+    char ppath[MAX_BUFFER+4];
+    FILE *fd;
+
+    // Prepare write variable
+    int    pcurrent = offset / MAX_SPLIT;
+    size_t poffset  = offset % MAX_SPLIT;
+    size_t total_write = 0;
+```
+
+(work in progress)
+
