@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
 
 ## Dokumentasi Hasil Pengerjaan
 ### terminal
-![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1241840806961086614/IMG_20240520_024018.jpg?ex=664ba9e0&is=664a5860&hm=885e7f22111780afb0f275779a2150cf2fc6b9b9d09445fa86df7d79dab44003&)
+![alt text](https://cdn.discordapp.com/attachments/1223171682500350062/1243261893766811750/Screenshot_1842.png?ex=6650d55e&is=664f83de&hm=20413276fffd694d11d896375e155b9c4386e696d61c0143f494e7825ff2dc25&)
 
 ## Sebelum 
 ### foto tidak ada watermark dan belum dipindah ke folder wm
