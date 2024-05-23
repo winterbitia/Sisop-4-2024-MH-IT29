@@ -16,198 +16,220 @@ Dalam folder "gallery", kami bertanggung jawab untuk menambahkan watermark pada 
 ## Penyelesaian:
 Pertama, impor berbagai header yang diperlukan untuk operasi file dan direktori, serta mendefinisikan panjang maksimum untuk path file untuk memastikan alokasi memori yang aman dan mencegah buffer overflow.
 ```c
-#include <dirent.h> // directory-related functions
-#include <stdio.h> // standard input/output
-#include <stdlib.h> // general utility functions
-#include <string.h> // string manipulation functions
-#include <sys/stat.h> // file status and mode related functions
-#include <sys/types.h> // system data types
-#include <unistd.h> // posix api functions
+#define FUSE_USE_VERSION 31
 
-#define MAX_PATH_LENGTH 512  
-// mendefinisikan panjang maksimum untuk path
-// to ensure safe memory allocation and prevent buffer overflows
+#include <fuse.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <errno.h>
+
+#define PATH_MAX_LENGTH 512
 ```
 
 Kedua, mendeklarasikan empat fungsi yang akan digunakan dalam program.
 ```c
-// fungsi untuk menambahkan watermark dan memindahkan gambar
 void add_watermark_and_move(const char *image_path);
-
-// fungsi untuk memproses file di folder "gallery"
-void process_gallery();
-
-// fungsi untuk membalik isi file dengan prefix "test"
-void reverseTestFiles();
-
-// fungsi untuk menjalankan script.sh
-void run_script();
+void handle_image_folder();
+void reverse_test_files();
+void execute_script();
 ```
 
 ### Fungsi add_watermark_and_move
 Fungsi ini berfungsi untuk menambahkan watermark pada setiap gambar dan memindahkannya ke dalam folder dengan prefix "wm". Pada setiap iterasi, fungsi ini menerima path file gambar sebagai argumen, kemudian menambahkan watermark pada gambar tersebut menggunakan perintah shell convert dari ImageMagick. Setelah ditambahkan watermark, gambar akan dipindahkan ke dalam folder "wm". 
 ```c
-// fungsi untuk menambahkan watermark pada gambar dan memindahkannya ke folder "wm"
 void add_watermark_and_move(const char *image_path) {
-    char command[1024]; // buffer perintah shell
-    char destination_path[MAX_PATH_LENGTH]; // buffer path tujuan
+    char cmd[1024];
+    char dest_path[PATH_MAX_LENGTH];
 
-    // membuat folder "wm" jika belum ada
     mkdir("gallery/wm", 0777);
 
-    // membuat path tujuan untuk menyimpan file gambar di dalam folder "gallery/wm"
-    snprintf(destination_path, sizeof(destination_path), "gallery/wm/%s", strrchr(image_path, '/') + 1);
+    snprintf(dest_path, sizeof(dest_path), "gallery/wm/%s", strrchr(image_path, '/') + 1);
 
-    // instruksi untuk menambahkan watermark dan memindahkan gambar
-    snprintf(command, sizeof(command), "convert \"%s\" -gravity south -pointsize 36 -fill white -draw \"text 0,0 'inikaryakita.id'\" \"%s\" && mv \"%s\" \"%s\"",
-        image_path, image_path, image_path, destination_path);
-             
-    // eksekusi instruksi watermark dan pemindahan gambar
-    system(command);
+    snprintf(cmd, sizeof(cmd), "convert \"%s\" -gravity south -pointsize 40 -fill white -draw \"text 0,0 'inikaryakita.id'\" \"%s\" && mv \"%s\" \"%s\"",
+        image_path, image_path, image_path, dest_path);
+
+    system(cmd);
 }
 ```
 
-### Fungsi process_gallery
+### Fungsi handle_image_folder
 Fungsi ini berfungsi untuk memproses setiap file yang terdapat dalam folder "gallery". Di dalamnya, fungsi ini melakukan pengecekan untuk setiap entri dalam direktori "gallery" dan memastikan bahwa hanya file dengan ekstensi gambar seperti .jpeg, .jpg, atau .png yang diproses. Setelah itu, fungsi akan memanggil fungsi add_watermark_and_move untuk menambahkan watermark pada setiap gambar dan memindahkannya ke dalam folder dengan prefix "wm". 
 ```c
-// fungsi untuk memproses file di dalam folder "gallery"
-void process_gallery() {
-    DIR *dir;  // pointer ke direktori
-    struct dirent *ent;  // struktur untuk menyimpan informasi entri direktori
+void handle_image_folder() {
+    DIR *directory;
+    struct dirent *entry;
 
-    // membuka direktori "gallery"
-    if ((dir = opendir("gallery")) != NULL) {
-        
-        // membaca setiap entri dalam direktori
-        while ((ent = readdir(dir)) != NULL) {
-            
-            // memeriksa ekstensi file untuk memastikan itu adalah gambar
-            if (strstr(ent->d_name, ".jpeg") || strstr(ent->d_name, ".jpg") || strstr(ent->d_name, ".png") ||
-                strstr(ent->d_name, ".JPEG") || strstr(ent->d_name, ".JPG") || strstr(ent->d_name, ".PNG")) {
+    if ((directory = opendir("gallery")) != NULL) {
+        while ((entry = readdir(directory)) != NULL) {
+            if (strstr(entry->d_name, ".jpeg") || strstr(entry->d_name, ".jpg") || strstr(entry->d_name, ".png") ||
+                strstr(entry->d_name, ".JPEG") || strstr(entry->d_name, ".JPG") || strstr(entry->d_name, ".PNG")) {
                     
-                char src_path[MAX_PATH_LENGTH];  // buffer untuk menyimpan path sumber
+                char source_path[PATH_MAX_LENGTH];
                 
-                // menggabungkan nama file dari entri direktori ke dalam path "gallery" dan menyimpan hasilnya di `src_path`.
-                snprintf(src_path, sizeof(src_path), "gallery/%s", ent->d_name);
+                snprintf(source_path, sizeof(source_path), "gallery/%s", entry->d_name);
 
-                // menambahkan watermark dan memindahkan file ke folder "wm"
-                add_watermark_and_move(src_path);
-                printf("file %s moved to the 'wm' folder with watermark.\n", ent->d_name);
+                add_watermark_and_move(source_path);
+                printf("File %s moved to the 'wm' folder with watermark successfully.\n", entry->d_name);
             }
         }
-        
-        // menutup direktori setelah selesai
-        closedir(dir);
+        closedir(directory);
     } else {
-        // menampilkan pesan kesalahan jika direktori tidak dapat dibuka
-        perror("could not open gallery directory");
+        perror("Could not open gallery directory.");
     }
 }
 ```
 
-### Fungsi reverseTestFiles
+### Fungsi reverse_test_files
 Fungsi ini berfungsi untuk membalikkan isi dari setiap file yang memiliki prefix "test" di dalam folder "bahaya". Dalam implementasinya, fungsi ini membaca setiap entri dalam direktori "bahaya", kemudian melakukan pengecekan untuk setiap file apakah memiliki prefix "test". Jika iya, isi dari file tersebut akan dibalik. Hal ini bertujuan untuk memberikan fitur baru yang diinginkan oleh Adfi, yang mana setiap file dengan prefix "test" akan mengalami pembalikan isi dari file tersebut, sehingga isi file tersebut dapat terbaca secara terbalik.
 ```c
-// fungsi untuk membalik isi file dengan prefix "test" dan menyimpannya dalam file baru
-void reverseTestFiles() {
-    struct dirent *entry;  // struktur untuk menyimpan informasi entri direktori
-    DIR *dp = opendir("bahaya");  // membuka direktori "bahaya"
+void reverse_test_files() {
+    struct dirent *entry;
+    DIR *dir_ptr = opendir("bahaya");
 
-    // memeriksa apakah direktori berhasil dibuka
-    if (dp == NULL) {
-        perror("opendir: bahaya");  // menampilkan pesan kesalahan
+    if (dir_ptr == NULL) {
+        perror("opendir: bahaya");
         return;
     }
 
-    // membaca setiap entri dalam direktori
-    while ((entry = readdir(dp))) {
-        
-        // memeriksa apakah entri adalah file reguler dan memiliki prefix "test"
+    while ((entry = readdir(dir_ptr))) {
         if (entry->d_type == DT_REG && strncmp(entry->d_name, "test", 4) == 0) {
+            char src_path[PATH_MAX_LENGTH];
+            snprintf(src_path, sizeof(src_path), "bahaya/%s", entry->d_name);
             
-            char filePath[MAX_PATH_LENGTH];  // buffer untuk path file sumber
-            
-            // buat path file dengan nama dari entri direktori di folder "bahaya".
-            snprintf(filePath, sizeof(filePath), "bahaya/%s", entry->d_name);
-            
-            char outputPath[MAX_PATH_LENGTH];  // buffer untuk path file output
-            
-            // buat path file dengan nama "reversed_" ditambah nama asli file di dalam folder "bahaya"
-            snprintf(outputPath, sizeof(outputPath), "bahaya/reversed_%s", entry->d_name);
+            char out_path[PATH_MAX_LENGTH];
+            snprintf(out_path, sizeof(out_path), "bahaya/reversed_%s", entry->d_name);
 
-            // membuka file sumber "filePath" dalam mode "r" (read) untuk membaca isinya
-            FILE *file = fopen(filePath, "r");
-            
-            // membuka file output "outputPath" dalam mode "w" (write) untuk menulis data baru ke dalamnya
-            FILE *outputFile = fopen(outputPath, "w");  
+            FILE *src_file = fopen(src_path, "r");
+            FILE *out_file = fopen(out_path, "w");
 
-            // memeriksa apakah file berhasil dibuka
-            if (file == NULL || outputFile == NULL) {
-                perror("fopen");  // menampilkan pesan kesalahan
+            if (src_file == NULL || out_file == NULL) {
+                perror("fopen");
                 continue;
             }
 
-            // mendapatkan ukuran file 
-            fseek(file, 0, SEEK_END); // memposisikan pointer file ke akhir file
-            long fileSize = ftell(file); // mendapatkan posisi pointer file saat ini, yang merupakan ukuran file
-            fseek(file, 0, SEEK_SET); // memposisikan pointer file kembali ke awal file
+            fseek(src_file, 0, SEEK_END);
+            long file_size = ftell(src_file);
+            fseek(src_file, 0, SEEK_SET);
 
-            // membaca isi file
-            char *content = malloc(fileSize + 1);  
-            // alokasi memori untuk isi file
-            fread(content, 1, fileSize, file);
-            // add null terminator (if buffer allows), handle potential overflow
-            content[fileSize] = '\0';
+            char *content = malloc(file_size + 1);
+            fread(content, 1, file_size, src_file);
+            content[file_size] = '\0';
 
-            // membalik isi file dan menulisnya ke file output
-            for (long i = fileSize - 1; i >= 0; i--) {
-                fputc(content[i], outputFile);
+            for (long i = file_size - 1; i >= 0; i--) {
+                fputc(content[i], out_file);
             }
 
-            // membebaskan memori dan menutup file
             free(content);
-            fclose(file);
-            fclose(outputFile);
+            fclose(src_file);
+            fclose(out_file);
         }
     }
 
-    // menutup direktori setelah selesai
-    closedir(dp);
+    closedir(dir_ptr);
 }
 ```
 
-### Fungsi run_script
+### Fungsi execute_script
 Fungsi ini berfungsi untuk menjalankan file "script.sh" yang terdapat dalam folder "bahaya". Langkah ini diperlukan karena "script.sh" merupakan bagian dari tugas yang diberikan oleh Adfi. Sebelumnya, telah dipastikan bahwa permission pada file "script.sh" sudah diubah agar dapat dijalankan melalui proses yang telah dilakukan sebelumnya dalam program. Dengan menjalankan "script.sh" melalui fungsi ini, program akan mengimplementasikan serangkaian aksi yang telah ditentukan dalam "script.sh", seperti penghapusan isi dari folder "gallery".
 ```c
-// fungsi untuk menjalankan script.sh
-void run_script() {
-    // menjalankan script.sh
+void execute_script() {
     system("./bahaya/script.sh");
 }
 ```
 
-### Fungsi main
-Fungsi ini berfungsi sebagai titik masuk utama program. Di dalamnya, langkah-langkah eksekusi yang diperlukan untuk menyelesaikan tugas dari Adfi diimplementasikan. Pertama, fungsi process_gallery dipanggil untuk melakukan pemrosesan folder "gallery". Langkah ini mencakup penambahan watermark pada gambar-gambar yang terdapat di dalamnya. Selanjutnya, dengan memanggil chmod, kami memastikan bahwa permission pada file "script.sh" telah diubah agar dapat dijalankan. Langkah berikutnya adalah memanggil fungsi reverseTestFiles untuk melakukan pembalikan isi dari file-file yang memiliki prefix "test" di dalam folder "bahaya". Setelah itu, file "script.sh" dijalankan melalui pemanggilan fungsi run_script. Terakhir, kami menghapus folder "gallery" dan "bahaya" beserta isinya sesuai dengan aksi yang telah ditentukan dalam "script.sh".
+### Fungsi fuse
+Program mendefinisikan fungsi-fungsi yang diperlukan oleh FUSE untuk melakukan operasi filesystem di userspace:
+myfs_getattr: Mengembalikan informasi atribut dari file.
+myfs_readdir: Membaca isi dari suatu direktori.
+myfs_open: Membuka suatu file.
+myfs_read: Membaca isi dari suatu file.
+Dan struktur fuse_operations untuk menyediakan kaitan antara fungsi-fungsi tersebut dengan implementasi operasi FUSE.
 ```c
-int main() {
-    // memproses folder "gallery" untuk menambahkan watermark pada gambar
-    process_gallery();
+static int myfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+    DIR *dp;
+    struct dirent *de;
+    char full_path[PATH_MAX_LENGTH];
+    snprintf(full_path, sizeof(full_path), "root%s", path);
 
-    // mengubah permission script.sh jika berpotensi menghapus "gallery"
-    if (chmod("bahaya/script.sh", 0755) < 0) {
-        perror("chmod: script.sh");  // menampilkan pesan kesalahan
+    dp = opendir(full_path);
+    if (dp == NULL)
+        return -errno;
+
+    while ((de = readdir(dp)) != NULL) {
+        struct stat st;
+        memset(&st, 0, sizeof(st));
+        st.st_ino = de->d_ino;
+        st.st_mode = de->d_type << 12;
+        if (filler(buf, de->d_name, &st, 0))
+            break;
     }
 
-    // memproses file dalam folder "bahaya" untuk membalik isi file dengan prefix "test"
-    reverseTestFiles();
+    closedir(dp);
+    return 0;
+}
 
-    // menjalankan script.sh
-    run_script();
+static int myfs_open(const char *path, struct fuse_file_info *fi) {
+    int res;
+    char full_path[PATH_MAX_LENGTH];
+    snprintf(full_path, sizeof(full_path), "root%s", path);
 
-    // menghapus folder "gallery" dan "bahaya" beserta isinya sesuai script.sh
+    res = open(full_path, fi->flags);
+    if (res == -1)
+        return -errno;
+
+    close(res);
+    return 0;
+}
+
+static int myfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    int fd;
+    int res;
+    char full_path[PATH_MAX_LENGTH];
+    snprintf(full_path, sizeof(full_path), "root%s", path);
+
+    fd = open(full_path, O_RDONLY);
+    if (fd == -1)
+        return -errno;
+
+    res = pread(fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+
+    close(fd);
+    return res;
+}
+
+static struct fuse_operations myfs_oper = {
+    .getattr = myfs_getattr,
+    .readdir = myfs_readdir,
+    .open    = myfs_open,
+    .read    = myfs_read,
+};
+```
+
+### Fungsi main
+Fungsi ini berfungsi sebagai titik masuk utama program. Di dalamnya, langkah-langkah eksekusi yang diperlukan untuk menyelesaikan tugas dari Adfi diimplementasikan. Pertama, fungsi handle_image_folder dipanggil untuk melakukan pemrosesan folder "gallery". Langkah ini mencakup penambahan watermark pada gambar-gambar yang terdapat di dalamnya. Selanjutnya, dengan memanggil chmod, kami memastikan bahwa permission pada file "script.sh" telah diubah agar dapat dijalankan. Langkah berikutnya adalah memanggil fungsi reverse_test_files untuk melakukan pembalikan isi dari file-file yang memiliki prefix "test" di dalam folder "bahaya". Setelah itu, file "script.sh" dijalankan melalui pemanggilan fungsi execute_script. Terakhir, program menghapus folder "gallery" dan "bahaya" dengan menggunakan perintah system("rm -rf gallery bahaya"). Program kemudian menggunakan fuse_main untuk menjalankan filesystem FUSE dengan operasi yang telah didefinisikan.
+```c
+int main(int argc, char *argv[]) {
+
+    handle_image_folder();
+
+    if (chmod("bahaya/script.sh", 0755) < 0) {
+        perror("chmod: script.sh");
+    }
+
+    reverse_test_files();
+
+    execute_script();
+
     system("rm -rf gallery bahaya");
 
-    return 0;  
+    return fuse_main(argc, argv, &myfs_oper, NULL);
 }
 ```
 
