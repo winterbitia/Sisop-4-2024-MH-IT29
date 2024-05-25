@@ -263,6 +263,237 @@ int main(int argc, char *argv[]) {
 ## Soal 2
 
 > Dikerjakan oleh: Malvin Putra Rismahardian (5027231048)
+>
+> ### isi soal
+
+Masih dengan Ini Karya Kita, sang CEO ingin melakukan tes keamanan pada folder sensitif Ini Karya Kita. Karena Teknologi Informasi merupakan departemen dengan salah satu fokus di Cyber Security, maka dia kembali meminta bantuan mahasiswa Teknologi Informasi angkatan 2023 untuk menguji dan mengatur keamanan pada folder sensitif tersebut. Untuk mendapatkan folder sensitif itu, mahasiswa IT 23 harus kembali mengunjungi website Ini Karya Kita pada www.inikaryakita.id/schedule . Silahkan isi semua formnya, tapi pada form subject isi dengan nama kelompok_SISOP24 , ex: IT01_SISOP24 . Lalu untuk form Masukkan Pesanmu, ketik “Mau Foldernya” . Tunggu hingga 1x24 jam, maka folder sensitif tersebut akan dikirimkan melalui email kalian. Apabila folder tidak dikirimkan ke email kalian, maka hubungi sang CEO untuk meminta bantuan.   
+
+* Pada folder "pesan" Adfi ingin meningkatkan kemampuan sistemnya dalam mengelola berkas-berkas teks dengan menggunakan fuse.
+-Jika sebuah file memiliki prefix "base64," maka sistem akan langsung mendekode isi file tersebut dengan algoritma Base64.
+
+-Jika sebuah file memiliki prefix "rot13," maka isi file tersebut akan langsung di-decode dengan algoritma ROT13.
+
+-Jika sebuah file memiliki prefix "hex," maka isi file tersebut akan langsung di-decode dari representasi heksadesimalnya.
+
+-Jika sebuah file memiliki prefix "rev," maka isi file tersebut akan langsung di-decode dengan cara membalikkan teksnya.
+Contoh:
+File yang belum didecode/ dienkripsi rot_13
+
+
+File yang sudah didecode/ dienkripsi rot_13
+
+
+* Pada folder “rahasia-berkas”, Adfi dan timnya memutuskan untuk menerapkan kebijakan khusus. Mereka ingin memastikan bahwa folder dengan prefix "rahasia" tidak dapat diakses tanpa izin khusus. 
+
+-Jika seseorang ingin mengakses folder dan file pada “rahasia”, mereka harus memasukkan sebuah password terlebih dahulu (password bebas). 
+
+- Setiap proses yang dilakukan akan tercatat pada logs-fuse.log dengan format :
+[SUCCESS/FAILED]::dd/mm/yyyy-hh:mm:ss::[tag]::[information]
+Ex:
+[SUCCESS]::01/11/2023-10:43:43::[moveFile]::[File moved successfully]
+
+
+### Penyelesaian
+**Pertama**
+
+Saya membuat direktori dan mengisi direktori itu dengan format sesuai dengan perintah yang diberikan. Kurang lebih menampilkan tree seperti ini : 
+
+```sh
+├── pastibisa
+├── pastibisa.c
+└── sensitif
+    ├── pesan
+    │   ├── enkripsi_rot13.txt
+    │   ├── halo.txt
+    │   ├── new-hex.txt
+    │   ├── notes-base64.txt
+    │   └── rev-text.txt
+    └── rahasia-berkas
+        ├── final.sh
+        └── tulisan.tx
+```
+
+**Kedua**
+
+Selanjutnya saya mengisi`pastibisa.c`dengan code berikut:
+
+```sh
+#define FUSE_USE_VERSION 30
+#include <fuse.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/buffer.h>
+
+static const char *pesan_dir = "/home/malvin/sisopmodul4/sensitif/pesan";
+static const char __attribute__((unused)) *rahasia_berkas_dir = "/home/malvin/sisopmodul4/sensitif/rahasia-berkas";
+static const char __attribute__((unused)) *password = "password123";
+
+void decrypt(char *buf, size_t size, const char *filename);
+
+static int custom_getattr(const char *path, struct stat *stbuf)
+{
+    int res;
+
+    res = lstat(path, stbuf);
+    if (res == -1)
+        return -errno;
+
+    return 0;
+}
+
+static int custom_read(const char *path, char *buf, size_t size, off_t offset,
+                       struct fuse_file_info *fi)
+{
+    int fd;
+    int res;
+
+    (void)fi;
+    fd = open(path, O_RDONLY);
+    if (fd == -1)
+        return -errno;
+
+    res = pread(fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+
+    close(fd);
+
+    if (strncmp(path, pesan_dir, strlen(pesan_dir)) == 0) {
+        if (strncmp(path + strlen(pesan_dir) + 1, "notes-base64.txt", 16) == 0) {
+            decrypt(buf, size, "base64");
+        } else if (strncmp(path + strlen(pesan_dir) + 1, "enkripsi_rot13.txt", 18) == 0) {
+            decrypt(buf, size, "rot13");
+        } else if (strncmp(path + strlen(pesan_dir) + 1, "new-hex.txt", 11) == 0) {
+            decrypt(buf, size, "hex");
+        } else if (strncmp(path + strlen(pesan_dir) + 1, "rev-text.txt", 13) == 0) {
+            decrypt(buf, size, "rev");
+        }
+    }
+
+    return res;
+}
+
+void decrypt(char *buf, size_t size, const char *filename)
+{
+    if (strcmp(filename, "base64") == 0) {
+        BIO *bio, *b64;
+        char *decodeBuf = (char *)malloc(size);
+        memset(decodeBuf, 0, size);
+        
+        bio = BIO_new_mem_buf(buf, -1);
+        b64 = BIO_new(BIO_f_base64());
+        bio = BIO_push(b64, bio);
+        BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+        size_t decodeLen = BIO_read(bio, decodeBuf, size);
+        memcpy(buf, decodeBuf, decodeLen);
+        buf[decodeLen] = '\0';
+        BIO_free_all(bio);
+        free(decodeBuf);
+    } else if (strcmp(filename, "rot13") == 0) {
+        for (size_t i = 0; i < size; ++i) {
+            if ('a' <= buf[i] && buf[i] <= 'z') {
+                buf[i] = 'a' + (buf[i] - 'a' + 13) % 26;
+            } else if ('A' <= buf[i] && buf[i] <= 'Z') {
+                buf[i] = 'A' + (buf[i] - 'A' + 13) % 26;
+            }
+        }
+    } else if (strcmp(filename, "hex") == 0) {
+        size_t i;
+        for (i = 0; i < size; i += 2) {
+            char hex[3] = {buf[i], buf[i + 1], '\0'};
+            buf[i / 2] = (char)strtol(hex, NULL, 16);
+        }
+        buf[i / 2] = '\0';
+    } else if (strcmp(filename, "rev") == 0) {
+        for (size_t i = 0; i < size / 2; ++i) {
+            char tmp = buf[i];
+            buf[i] = buf[size - i - 1];
+            buf[size - i - 1] = tmp;
+        }
+    }
+}
+
+static struct fuse_operations fuse_example_oper = {
+    .getattr = custom_getattr,
+    .read = custom_read,
+};
+
+int main(int argc, char *argv[])
+{
+    umask(0);
+    return fuse_main(argc, argv, &fuse_example_oper, NULL);
+
+}
+```
+
+Secara garis besar, kode tersebut digunakan untuk membuat sebuah filesystem virtual dengan FUSE (Filesystem in Userspace) yang memiliki kemampuan untuk membaca dan mendekripsi file teks secara otomatis berdasarkan nama file dan metode enkripsi yang telah ditentukan.
+
+Berikut adalah penjelasan singkat tentang setiap bagian dari code tersebut:
+
+`FUSE_USE_VERSION 30`: Menentukan versi API FUSE yang digunakan.
+`Header Files`: Mengimpor pustaka yang dibutuhkan seperti FUSE, standard I/O, standard library, dan OpenSSL untuk operasi dekripsi
+
+Mendefinisikan direktori `pesan` dan `rahasia-berkas`.
+`Password` yang digunakan dalam kode ini.
+
+Fungsi ``Dekripsi`: Deklarasi fungsi dekripsi yang akan dijelaskan lebih lanjut di bagian implementasi fungsi.
+
+Fungsi `getattr`: Mengambil atribut file atau direktori seperti ukuran, waktu modifikasi, dan lain-lain.
+
+Fungsi `Read`: Membaca isi file dan mendekripsi isinya jika file tersebut berada di direktori `pesan` dan memiliki nama yang sesuai dengan format enkripsi tertentu. 
+
+Implementasi Fungsi `decrypt`: 
+`Base64`: Menggunakan OpenSSL untuk mendekripsi teks yang dienkode dengan `Base64`.
+`ROT13`: Mendekripsi teks dengan mengganti setiap huruf dengan huruf yang 13 posisi setelahnya dalam alfabet.
+`Hexadecimal`: Mengkonversi string hex menjadi karakter ASCII.
+`Reverse`: Membalikkan urutan karakter dalam string.
+
+Struktur `fuse_operations`: Mendefinisikan operasi FUSE yang digunakan (`getattr` dan `read`).
+
+Fungsi `main`: Fungsi utama yang memulai FUSE file system dengan operasi yang telah didefinisikan.
+
+**Ketiga**
+
+Untuk langkah terakhir, kita akan melakukan pengujian terkait perintah diatas.
+
+### Langkah-Langkah Pengujian
+
+Mounting File System
+```sh
+`./pastibisa /home/malvin/sisopmodul4/mountpoint -o nonempty`
+```
+
+Akses Direktori dan File
+`Navigasi ke direktori mountpoint`:
+```sh
+cd /path_anda/mountpoint
+```
+
+`Akses file yang ada di dalam direktori pesan`:
+```sh
+cat pesan/enkripsi_rot13.txt
+cat pesan/notes-base64.txt
+cat pesan/new-hex.txt
+cat pesan/rev-text.txt
+cat pesan/halo.txt
+```
+
+`Mengakses file dalam direktori rahasia-berkas`
+```sh
+cd /path_anda/rahasia-berkas
+ls
+```
+
+
+### kendala
+Kendala yang saya alami adalah bahwa file `pastibisa.c` hanya dapat dijalankan dan membuka file yang terenkripsi, namun teks tidak dapat terenkripsi dengan benar. Selain itu, terjadi kesalahan di mana Linux secara otomatis membaca perintah bash yang salah.
 
 ## Soal 3
 
